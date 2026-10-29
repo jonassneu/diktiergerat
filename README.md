@@ -48,3 +48,8 @@ running compositor directly.
 - `scripts/` whisper.cpp build and install
 
 `npm test` runs the unit tests.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The bundled Inter and JetBrains Mono fonts are
+under the SIL Open Font License, see `src/renderer/assets/fonts/LICENSE-OFL.txt`.
