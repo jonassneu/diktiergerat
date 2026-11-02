@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs Murmur for the current user, on any common Linux distribution
-# (Fedora, Nobara, Ubuntu, Debian, Mint, Pop!_OS, Arch, CachyOS, Manjaro,
+# (Fedora, Nobara, Ubuntu, Debian, Linux Mint, Pop!_OS, Arch, CachyOS, Manjaro,
 # EndeavourOS, openSUSE) and desktop (KDE Plasma, GNOME, Hyprland, Sway,
 # Xfce, Cinnamon, ...):
 #
@@ -69,6 +69,7 @@ case "$DESKTOP_LC" in
   *sway*) DESK=sway ;;
   *kde*|*plasma*) DESK=kde ;;
   *gnome*|*ubuntu*|*pop*|*unity*|*budgie*) DESK=gnome ;;
+  *cinnamon*) DESK=cinnamon ;;
   *niri*|*river*|*wayfire*|*labwc*) DESK=wlroots ;;
   *) DESK=other ;;
 esac

@@ -420,8 +420,8 @@ function DesktopSection({ s, t }) {
             <button type="button" class="t3-ghost" onClick=${copy} style=${{ height: '34px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 12px', border: 0, borderRadius: '8px', background: 'transparent', color: copied ? '#00D492' : '#D4D4D4', fontSize: '13px', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}><${CopyIcon} size=${15} width=${1.9} />${copied ? 'Copied' : 'Copy'}</button>
           </div>`}
         <div style=${{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
-          ${sc.method === 'gnome' && sc.bound && html`<${SoftButton} onClick=${() => api.invoke('shortcut:unbind')}>Remove from GNOME<//>`}
-          ${(sc.method === 'portal' || sc.method === 'gnome') && !sc.bound && html`<${AccentButton} t=${t} onClick=${() => api.invoke('shortcut:bind')}>${sc.method === 'gnome' ? 'Add to GNOME' : 'Set up shortcut'}<//>`}
+          ${(sc.method === 'gnome' || sc.method === 'cinnamon') && sc.bound && html`<${SoftButton} onClick=${() => api.invoke('shortcut:unbind')}>Remove from ${s.desk.name}<//>`}
+          ${['portal', 'gnome', 'cinnamon'].includes(sc.method) && !sc.bound && html`<${AccentButton} t=${t} onClick=${() => api.invoke('shortcut:bind')}>${sc.method === 'portal' ? 'Set up shortcut' : 'Add to ' + s.desk.name}<//>`}
         </div>
       </div>
       ${!ty.tool && html`

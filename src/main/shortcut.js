@@ -3,6 +3,7 @@
 //   hyprland  binds in the Hyprland config (press + release)
 //   portal    XDG GlobalShortcuts portal: KDE, GNOME 48+, COSMIC (press + release)
 //   gnome     GNOME custom keyboard shortcut via gsettings (press only)
+//   cinnamon  Cinnamon (Linux Mint) custom keyboard shortcut via gsettings (press only)
 //   x11       Electron's global shortcut on X11 desktops (press only)
 //   manual    the user binds `murmur toggle` in their own settings
 const { EventEmitter } = require('events');
@@ -12,6 +13,8 @@ const { Portal } = require('./portal');
 
 const GNOME_SCHEMA = 'org.gnome.settings-daemon.plugins.media-keys';
 const GNOME_PATH = '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/murmur/';
+const CIN_SCHEMA = 'org.cinnamon.desktop.keybindings';
+const CIN_PATH = '/org/cinnamon/desktop/keybindings/custom-keybindings/murmur/';
 
 function gsettings(args) {
   return new Promise((resolve) => {
@@ -62,6 +65,11 @@ class Shortcut extends EventEmitter {
       this.portal.on('change', () => this.setState({ bound: !!this.portal.bound, detail: this.portal.bound }));
       // Re-binding after the first time is silent, so do it on every start.
       if (this.config.get('portalBound')) this.bind().catch(() => {});
+    } else if (desktop.desktop === 'cinnamon' && await desktop.has('gsettings') && await gsettings(['get', CIN_SCHEMA, 'custom-list']) !== null) {
+      // Before the portal check on X11 too: Cinnamon grabs many Super combos
+      // itself, and its own shortcut list is where Mint users look.
+      this.method = 'cinnamon';
+      this.setState({ bound: await this.cinAdded() });
     } else if (desktop.desktop === 'gnome' && await desktop.has('gsettings')) {
       this.method = 'gnome';
       this.setState({ bound: await this.gnomeAdded() });
@@ -103,6 +111,9 @@ class Shortcut extends EventEmitter {
       } else if (this.method === 'gnome') {
         await this.gnomeAdd();
         this.setState({ bound: await this.gnomeAdded(), error: null });
+      } else if (this.method === 'cinnamon') {
+        await this.cinAdd();
+        this.setState({ bound: await this.cinAdded(), error: null });
       } else if (this.method === 'x11') {
         this.registerX11();
       }
@@ -115,6 +126,9 @@ class Shortcut extends EventEmitter {
   async unbind() {
     if (this.method === 'gnome') {
       await this.gnomeRemove();
+      this.setState({ bound: false });
+    } else if (this.method === 'cinnamon') {
+      await this.cinRemove();
       this.setState({ bound: false });
     }
     return this.state;
@@ -129,6 +143,7 @@ class Shortcut extends EventEmitter {
   async update() {
     if (this.method === 'x11') this.registerX11();
     else if (this.method === 'gnome' && this.state.bound) await this.gnomeAdd();
+    else if (this.method === 'cinnamon' && this.state.bound) await this.cinAdd();
     this.emit('change');
   }
 
@@ -167,6 +182,32 @@ class Shortcut extends EventEmitter {
   async gnomeRemove() {
     const list = (await this.gnomeList()).filter((p) => p !== GNOME_PATH);
     await gsettings(['set', GNOME_SCHEMA, 'custom-keybindings', '[' + list.map((p) => `'${p}'`).join(', ') + ']']);
+  }
+
+  // ---------- Cinnamon custom shortcut ----------
+
+  async cinList() {
+    const raw = await gsettings(['get', CIN_SCHEMA, 'custom-list']);
+    return raw ? (raw.match(/'[^']*'/g) || []).map((s) => s.slice(1, -1)) : [];
+  }
+
+  async cinAdded() {
+    return (await this.cinList()).includes('murmur');
+  }
+
+  async cinAdd() {
+    const rel = `${CIN_SCHEMA}.custom-keybinding:${CIN_PATH}`;
+    await gsettings(['set', rel, 'name', 'Murmur dictation']);
+    await gsettings(['set', rel, 'command', this.cmd + ' toggle']);
+    await gsettings(['set', rel, 'binding', `['${gnomeAccel(this.config.get('combo'))}']`]);
+    const list = await this.cinList();
+    if (!list.includes('murmur')) list.push('murmur');
+    await gsettings(['set', CIN_SCHEMA, 'custom-list', '[' + list.map((p) => `'${p}'`).join(', ') + ']']);
+  }
+
+  async cinRemove() {
+    const list = (await this.cinList()).filter((p) => p !== 'murmur');
+    await gsettings(['set', CIN_SCHEMA, 'custom-list', '[' + list.map((p) => `'${p}'`).join(', ') + ']']);
   }
 
   snapshot() {

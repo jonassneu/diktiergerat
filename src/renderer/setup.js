@@ -71,7 +71,7 @@ function Setup() {
   };
   const sc = s.desk.shortcut;
   const hypr = sc.method === 'hyprland';
-  const needsBind = (sc.method === 'portal' || sc.method === 'gnome') && !sc.bound;
+  const needsBind = ['portal', 'gnome', 'cinnamon'].includes(sc.method) && !sc.bound;
   const addShortcut = async () => {
     if (hypr) {
       if (!s.hypr.added) await api.invoke('hypr:add');
@@ -82,7 +82,7 @@ function Setup() {
     }
     next();
   };
-  const primaryLabel = hypr ? (s.hypr.added ? 'Continue' : 'Add to Hyprland') : needsBind ? (sc.method === 'gnome' ? 'Add to GNOME' : 'Set up shortcut') : 'Continue';
+  const primaryLabel = hypr ? (s.hypr.added ? 'Continue' : 'Add to Hyprland') : needsBind ? (sc.method === 'portal' ? 'Set up shortcut' : 'Add to ' + s.desk.name) : 'Continue';
   const verb = sc.mode === 'tap' ? 'Tap' : 'Hold';
   const tryDown = (e) => {
     if (e.button !== 0) return;

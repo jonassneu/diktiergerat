@@ -82,6 +82,9 @@ export function desktopShortcutText(s) {
   if (sc.method === 'portal') return sc.bound
     ? 'Set up in ' + name + '. Press and hold it in any app.'
     : name + ' asks you once to confirm the shortcut. Murmur then hears when you press and let go of it.';
+  if (sc.method === 'cinnamon') return sc.bound
+    ? 'Added to Cinnamon’s keyboard shortcuts (System Settings → Keyboard → Shortcuts → Custom) as “Murmur dictation”. Tap it to start, tap again to stop.'
+    : 'Murmur adds “Murmur dictation” to Cinnamon’s keyboard shortcuts. Tap it to start, tap again to stop.';
   if (sc.method === 'gnome') return sc.bound
     ? 'Added to GNOME’s keyboard shortcuts as “Murmur dictation”. Tap it to start, tap again to stop.'
     : 'Murmur adds “Murmur dictation” to GNOME’s keyboard shortcuts. Tap it to start, tap again to stop.';

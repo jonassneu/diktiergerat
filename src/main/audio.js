@@ -19,7 +19,10 @@ function which(cmd) {
 
 // PipeWire (pw-record), PulseAudio (parecord) or plain ALSA (arecord).
 function recordCommand(target) {
-  if (which('pw-record')) {
+  // pw-record is often installed without PipeWire running (Mint 21 uses
+  // PulseAudio), so check for the PipeWire socket too.
+  const pipewire = fs.existsSync(path.join(process.env.XDG_RUNTIME_DIR || '/run/user/' + process.getuid(), 'pipewire-0'));
+  if (pipewire && which('pw-record')) {
     const args = ['--rate', String(RATE), '--channels', '1', '--format', 's16', '--raw', '--latency', '30ms'];
     if (target && target !== 'default') args.push('--target', target);
     return ['pw-record', args.concat(['-'])];

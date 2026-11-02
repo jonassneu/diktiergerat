@@ -23,7 +23,7 @@ falling back to the CPU), downloads Node 22 into Murmur's folder only if your
 system Node is too old, and starts Murmur as a background service. The first
 launch opens a short setup that picks a model and the shortcut.
 
-Supported distributions: Fedora, Nobara, Ubuntu, Debian, Mint, Pop!_OS, Arch,
+Supported distributions: Fedora, Nobara, Ubuntu, Debian, Linux Mint (21 and 22), Pop!_OS, Arch,
 CachyOS, Manjaro, EndeavourOS, openSUSE (dnf, apt, pacman, zypper).
 
 ## Desktops
@@ -33,8 +33,9 @@ CachyOS, Manjaro, EndeavourOS, openSUSE (dnf, apt, pacman, zypper).
 | Hyprland | added to your Hyprland config, hold or tap | `wtype` |
 | KDE Plasma, GNOME 48+, COSMIC (Wayland) | XDG shortcut portal, the desktop asks once to confirm; hold or tap | `ydotool` |
 | older GNOME (Wayland) | added to GNOME keyboard shortcuts, tap | `ydotool` |
+| Linux Mint Cinnamon (X11 or Wayland) | added to Cinnamon keyboard shortcuts, tap | `xdotool` (X11), `ydotool` (Wayland) |
 | Sway, niri, river, labwc, Wayfire | bind `murmur toggle` yourself | `wtype` |
-| any X11 desktop (Xfce, Cinnamon, MATE, ...) | registered by Murmur, tap | `xdotool` |
+| any other X11 desktop (Xfce, MATE, ...) | registered by Murmur, tap | `xdotool` |
 
 Text is pasted in one go (Ctrl+V, Ctrl+Shift+V in terminals) and your
 clipboard is put back afterwards. On GNOME/KDE Wayland the installer sets up
