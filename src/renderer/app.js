@@ -1,4 +1,4 @@
-import { html, render, useState, useEffect, useRef, api, tones, useAppState, Logo, Keycap, CheckIcon, WarnIcon, CloseIcon, CopyIcon, Backdrop } from './lib.js';
+import { html, render, useState, useEffect, useRef, api, tones, useAppState, Logo, Keycap, CheckIcon, WarnIcon, CloseIcon, CopyIcon, Backdrop, desktopShortcutText } from './lib.js';
 
 const B = window.MurmurBinds;
 
@@ -239,6 +239,9 @@ function Shortcut({ s, t }) {
   const roleColor = { dim: '#8F8F8F', fg: '#D4D4D4', acc: t.text, kw: '#E3A6FF' };
   const codeText = B.text(cfg.combo, cfg.mode, f);
   const added = s.hypr.added;
+  const sc = s.desk.shortcut;
+  const hypr = sc.method === 'hyprland';
+  const portal = sc.method === 'portal';
 
   const copyCode = () => {
     navigator.clipboard.writeText(codeText).catch(() => {});
@@ -256,7 +259,17 @@ function Shortcut({ s, t }) {
       <section style=${{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <h2 style=${H2}>Dictation shortcut</h2>
         <div style=${{ ...CARD, display: 'flex', flexDirection: 'column', gap: '16px', padding: '22px 22px 20px' }}>
-          ${!recording ? html`
+          ${portal ? html`
+            <div style=${{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div style=${{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 auto', flexWrap: 'wrap' }}>
+                ${sc.bound && sc.detail && sc.detail !== 'set'
+                  ? html`<span style=${{ fontSize: '15px', fontWeight: 600, color: '#F5F5F5' }}>${sc.detail}</span>`
+                  : cfg.combo.map((k) => html`<${Keycap} label=${k} />`)}
+              </div>
+              ${sc.bound && sc.canConfigure && html`<${SoftButton} onClick=${() => api.invoke('shortcut:configure')}>Change…<//>`}
+            </div>
+            <p style=${{ margin: 0, fontSize: '13px', lineHeight: 1.5, color: '#8F8F8F' }}>${s.desk.name} owns this shortcut. ${sc.bound ? (sc.canConfigure ? 'Change it here or in its keyboard shortcut settings.' : 'Change it in ' + s.desk.name + '’s keyboard shortcut settings, under Murmur.') : 'Set it up below, then ' + s.desk.name + ' asks you to confirm the keys.'}</p>
+          ` : !recording ? html`
             <div style=${{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <div style=${{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 auto', flexWrap: 'wrap' }}>
                 ${cfg.combo.map((k) => html`<${Keycap} label=${k} />`)}
@@ -268,7 +281,7 @@ function Shortcut({ s, t }) {
                 ${comboCheck.ok ? html`<${CheckIcon} size=${16} stroke="#00D492" width=${2.4} style=${{ flex: 'none', marginTop: '2px' }} />` : html`<${WarnIcon} style=${{ flex: 'none', marginTop: '2px' }} />`}
                 <span>${comboCheck.msg}</span>
               </p>`}
-            <p style=${{ margin: 0, fontSize: '13px', lineHeight: 1.5, color: '#8F8F8F' }}>Picked to stay clear of CachyOS defaults like Super + Space (launcher) and Super + Alt + Space (floating). Murmur checks again whenever your Hyprland config changes.</p>
+            ${hypr && html`<p style=${{ margin: 0, fontSize: '13px', lineHeight: 1.5, color: '#8F8F8F' }}>Picked to stay clear of CachyOS defaults like Super + Space (launcher) and Super + Alt + Space (floating). Murmur checks again whenever your Hyprland config changes.</p>`}
           ` : html`
             <button type="button" class="mm-rec mm-anim" ref=${recRef} onKeyDown=${onKey} onKeyUp=${onKeyUp} aria-label="Shortcut recorder. Press the new key combination, or Escape to cancel."
               style=${{ height: '64px', display: 'flex', alignItems: 'center', gap: '8px', padding: '0 16px', borderRadius: '16px', border: '1px solid ' + t.accent, background: t.a(0.1), color: '#F5F5F5', cursor: 'text', textAlign: 'left' }}>
@@ -294,10 +307,10 @@ function Shortcut({ s, t }) {
         <h2 style=${H2}>How it works</h2>
         <div style=${{ ...CARD, display: 'flex', flexDirection: 'column', gap: '12px', padding: '18px 22px 20px' }}>
           <div style=${{ alignSelf: 'flex-start', display: 'flex', flexWrap: 'wrap', gap: '2px', padding: '2px', borderRadius: '999px', background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <button type="button" class="mm-seg" aria-pressed=${cfg.mode === 'hold'} onClick=${() => api.invoke('config:set', { mode: 'hold' })} style=${{ height: '40px', padding: '0 18px', border: 0, borderRadius: '999px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', ...seg(cfg.mode === 'hold') }}>Hold to talk</button>
+            ${sc.canHold && html`<button type="button" class="mm-seg" aria-pressed=${cfg.mode === 'hold'} onClick=${() => api.invoke('config:set', { mode: 'hold' })} style=${{ height: '40px', padding: '0 18px', border: 0, borderRadius: '999px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', ...seg(cfg.mode === 'hold') }}>Hold to talk</button>`}
             <button type="button" class="mm-seg" aria-pressed=${cfg.mode === 'tap'} onClick=${() => api.invoke('config:set', { mode: 'tap' })} style=${{ height: '40px', padding: '0 18px', border: 0, borderRadius: '999px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', ...seg(cfg.mode === 'tap') }}>Tap to start, tap to stop</button>
           </div>
-          <p style=${{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: '#A1A1A1' }}>${cfg.mode === 'hold' ? 'Hold the shortcut while you speak. Let go and the text is typed.' : 'Tap once to start listening and tap again to stop. Easier for longer thoughts.'}</p>
+          <p style=${{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: '#A1A1A1' }}>${sc.mode === 'hold' ? 'Hold the shortcut while you speak. Let go and the text is typed.' : 'Tap once to start listening and tap again to stop. Easier for longer thoughts.'}${sc.canHold ? '' : ' ' + s.desk.name + ' only tells Murmur when the shortcut is pressed, not when it is let go, so hold to talk is not available here.'}</p>
         </div>
       </section>
 
@@ -344,7 +357,8 @@ function Shortcut({ s, t }) {
         </div>
       </section>
 
-      <section style=${{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      ${!hypr && html`<${DesktopSection} s=${s} t=${t} />`}
+      ${hypr && html`<section style=${{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <h2 style=${H2}>Hyprland</h2>
         <div style=${{ ...CARD, display: 'flex', flexDirection: 'column', gap: '16px', padding: '20px 22px' }}>
           <div style=${{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
@@ -376,8 +390,50 @@ function Shortcut({ s, t }) {
               : html`<${AccentButton} t=${t} onClick=${() => api.invoke('hypr:add', f)}>Add to ${fileName}<//>`}
           </div>
         </div>
-      </section>
+      </section>`}
     </div>`;
+}
+
+function DesktopSection({ s, t }) {
+  const sc = s.desk.shortcut;
+  const ty = s.desk.typing;
+  const [copied, setCopied] = useState(false);
+  const cmd = sc.command + ' toggle';
+  const copy = () => {
+    navigator.clipboard.writeText(cmd).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
+  const badge = (ok, text) => html`<span style=${{ display: 'inline-flex', alignItems: 'center', height: '26px', padding: '0 10px', borderRadius: '999px', background: ok ? 'rgba(0,212,146,0.14)' : 'rgba(255,185,0,0.14)', color: ok ? '#00D492' : '#FFB900', fontSize: '12.5px', fontWeight: 600, whiteSpace: 'nowrap' }}>${text}</span>`;
+  return html`
+    <section style=${{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <h2 style=${H2}>${s.desk.name}</h2>
+      <div style=${{ ...CARD, display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px 22px' }}>
+        <div style=${{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <p style=${{ margin: 0, flex: '1 1 320px', fontSize: '14px', lineHeight: 1.5, color: '#A1A1A1' }}>${desktopShortcutText(s)}</p>
+          ${sc.method !== 'manual' && badge(sc.bound, sc.bound ? 'Shortcut ready' : 'Not set up yet')}
+        </div>
+        ${sc.error && sc.method !== 'x11' && html`<p style=${{ margin: 0, display: 'flex', gap: '8px', fontSize: '13px', color: '#FFB900' }}><${WarnIcon} style=${{ flex: 'none' }} />${sc.error}</p>`}
+        ${sc.method === 'manual' && html`
+          <div class="mono" style=${{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '6px 6px 6px 14px', borderRadius: '12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '13px', color: '#D4D4D4', userSelect: 'text' }}>
+            <span style=${{ overflowX: 'auto', whiteSpace: 'nowrap' }}>${cmd}</span>
+            <button type="button" class="t3-ghost" onClick=${copy} style=${{ height: '34px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 12px', border: 0, borderRadius: '8px', background: 'transparent', color: copied ? '#00D492' : '#D4D4D4', fontSize: '13px', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}><${CopyIcon} size=${15} width=${1.9} />${copied ? 'Copied' : 'Copy'}</button>
+          </div>`}
+        <div style=${{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+          ${sc.method === 'gnome' && sc.bound && html`<${SoftButton} onClick=${() => api.invoke('shortcut:unbind')}>Remove from GNOME<//>`}
+          ${(sc.method === 'portal' || sc.method === 'gnome') && !sc.bound && html`<${AccentButton} t=${t} onClick=${() => api.invoke('shortcut:bind')}>${sc.method === 'gnome' ? 'Add to GNOME' : 'Set up shortcut'}<//>`}
+        </div>
+      </div>
+      ${!ty.tool && html`
+        <div style=${{ ...CARD, display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '16px 20px', borderColor: 'rgba(255,185,0,0.3)' }}>
+          <${WarnIcon} style=${{ flex: 'none', marginTop: '2px' }} />
+          <span style=${{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 auto' }}>
+            <span style=${ROW_TITLE}>Murmur can’t type into other apps yet</span>
+            <span style=${ROW_SUB}>${ty.problem}. Run the installer again (it sets this up), then check again. Until then your words go to the clipboard.</span>
+          </span>
+          <${SoftButton} onClick=${() => api.invoke('typing:recheck')}>Check again<//>
+        </div>`}
+    </section>`;
 }
 
 // ---------- Models ----------

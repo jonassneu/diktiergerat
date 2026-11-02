@@ -95,13 +95,13 @@ function Typed({ v }) {
     </div>`;
 }
 
-function Copied({ t }) {
+function Copied({ v, t }) {
   return html`
     <div class="mm-in lg pill" style=${{ ...PILL, gap: '14px', padding: '0 20px 0 10px' }}>
       <span style=${{ ...ICON, background: 'rgba(255,255,255,0.08)' }}>
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke=${t.text} stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="14" height="17" rx="2.5"></rect><path d="M9 4.5h6v3H9z"></path></svg>
       </span>
-      <${Lines} title="Copied to clipboard" sub="No text field to type into" />
+      <${Lines} title="Copied to clipboard" sub=${v.reason} />
       <span style=${{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
         <${MiniKey} label="Ctrl" /><${MiniKey} label="V" />
         <span style=${{ ...SUB, marginLeft: '4px' }}>to paste</span>
@@ -136,7 +136,7 @@ function View({ v }) {
     case 'warming': return html`<${Warming} v=${v} t=${t} />`;
     case 'transcribing': return html`<${Transcribing} v=${v} t=${t} />`;
     case 'typed': return html`<${Typed} v=${v} />`;
-    case 'copied': return html`<${Copied} t=${t} />`;
+    case 'copied': return html`<${Copied} v=${v} t=${t} />`;
     case 'nothing': return html`<${Nothing} />`;
     case 'nomic': return html`<${Problem} title="No microphone found" sub="Plug one in or pick another input" action=${{ id: 'choose-input', label: 'Choose input' }} />`;
     case 'error': return html`<${Problem} title="Something went wrong" sub=${v.msg || 'Check `murmur status`'} />`;

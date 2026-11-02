@@ -83,6 +83,8 @@ function printStatus(s) {
     ['state', s.state],
     ['model', s.model + (s.whisper === 'ready' ? '' : ` (${s.whisper})`)],
     ['backend', s.backend],
+    ['desktop', s.desktop],
+    ['typing', s.typing],
     ['shortcut', s.shortcut],
     ['input', s.input]
   ];

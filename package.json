@@ -17,7 +17,12 @@
     "electron": "^45.1.0"
   },
   "dependencies": {
+    "dbus-next": "^0.10.2",
     "htm": "^3.1.1",
     "preact": "^11.1.0"
+  },
+  "allowScripts": {
+    "electron": true,
+    "usocket": false
   }
 }

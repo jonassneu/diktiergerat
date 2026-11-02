@@ -4,9 +4,12 @@ const path = require('path');
 const { execFile } = require('child_process');
 const paths = require('./paths');
 
-// Start-on-login through the systemd user service written by scripts/install.sh.
+// Start-on-login through the systemd user service written by scripts/install.sh,
+// or an XDG autostart entry on systems without systemd user sessions.
 const UNIT = 'murmur.service';
-const unitFile = path.join(path.dirname(path.dirname(paths.config)), 'systemd', 'user', UNIT);
+const configHome = path.dirname(path.dirname(paths.config));
+const unitFile = path.join(configHome, 'systemd', 'user', UNIT);
+const xdgFile = path.join(configHome, 'autostart', 'murmur.desktop');
 
 function systemctl(args) {
   return new Promise((resolve) => {
@@ -14,19 +17,33 @@ function systemctl(args) {
   });
 }
 
-function available() {
+function useSystemd() {
   return fs.existsSync(unitFile);
 }
 
+function available() {
+  return useSystemd() || fs.existsSync(xdgFile);
+}
+
 async function enabled() {
-  if (!available()) return false;
-  return (await systemctl(['is-enabled', UNIT])).out === 'enabled';
+  if (useSystemd()) return (await systemctl(['is-enabled', UNIT])).out === 'enabled';
+  try {
+    return !/^Hidden=true$/m.test(fs.readFileSync(xdgFile, 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 // Enable only; Murmur is already running, so there is nothing to start now.
 async function set(on) {
-  if (!available()) return false;
-  await systemctl([on ? 'enable' : 'disable', UNIT]);
+  if (useSystemd()) {
+    await systemctl([on ? 'enable' : 'disable', UNIT]);
+  } else if (fs.existsSync(xdgFile)) {
+    const text = fs.readFileSync(xdgFile, 'utf8').replace(/^Hidden=.*\n?/m, '');
+    fs.writeFileSync(xdgFile, on ? text : text.replace(/\n*$/, '\nHidden=true\n'));
+  } else {
+    return false;
+  }
   return enabled();
 }
 

@@ -1,11 +1,39 @@
 'use strict';
+const fs = require('fs');
+const path = require('path');
 const { spawn, execFile } = require('child_process');
 const { EventEmitter } = require('events');
 
 const RATE = 16000;
 const BYTES_PER_SEC = RATE * 2;
 
-// Records 16 kHz mono s16le from PipeWire through pw-record.
+function which(cmd) {
+  for (const dir of String(process.env.PATH || '/usr/bin:/bin').split(':')) {
+    try {
+      fs.accessSync(path.join(dir, cmd), fs.constants.X_OK);
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+// PipeWire (pw-record), PulseAudio (parecord) or plain ALSA (arecord).
+function recordCommand(target) {
+  if (which('pw-record')) {
+    const args = ['--rate', String(RATE), '--channels', '1', '--format', 's16', '--raw', '--latency', '30ms'];
+    if (target && target !== 'default') args.push('--target', target);
+    return ['pw-record', args.concat(['-'])];
+  }
+  if (which('parecord')) {
+    const args = ['--raw', '--rate=' + RATE, '--channels=1', '--format=s16le', '--latency-msec=30'];
+    if (target && target !== 'default') args.push('--device=' + target);
+    return ['parecord', args];
+  }
+  if (which('arecord')) return ['arecord', ['-q', '-t', 'raw', '-f', 'S16_LE', '-r', String(RATE), '-c', '1']];
+  return null;
+}
+
+// Records 16 kHz mono s16le from the default (or chosen) microphone.
 class Recorder extends EventEmitter {
   constructor() {
     super();
@@ -22,10 +50,13 @@ class Recorder extends EventEmitter {
     this.chunks = [];
     this.bytes = 0;
     this.peak = 0;
-    const args = ['--rate', String(RATE), '--channels', '1', '--format', 's16', '--raw', '--latency', '30ms'];
-    if (target && target !== 'default') args.push('--target', target);
-    args.push('-');
-    const proc = spawn('pw-record', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const rec = recordCommand(target);
+    if (!rec) {
+      setImmediate(() => this.emit('failed', 'no recorder found: install pipewire (pw-record) or pulseaudio-utils (parecord)'));
+      return;
+    }
+    const [cmd, args] = rec;
+    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     this.proc = proc;
     let stderr = '';
     proc.stderr.on('data', (d) => { stderr += d; });
@@ -39,7 +70,7 @@ class Recorder extends EventEmitter {
     });
     proc.on('error', (e) => this.emit('failed', e.message));
     proc.on('exit', (code) => {
-      if (this.proc === proc && code) this.emit('failed', stderr.trim() || 'pw-record exited with ' + code);
+      if (this.proc === proc && code) this.emit('failed', stderr.trim() || cmd + ' exited with ' + code);
     });
   }
 
@@ -111,8 +142,11 @@ function listInputs() {
 
 function defaultInput() {
   return new Promise((resolve) => {
-    execFile('pactl', ['get-default-source'], { timeout: 3000 }, (err, out) => resolve(err ? null : out.trim() || null));
+    execFile('pactl', ['get-default-source'], { timeout: 3000 }, (err, out) => {
+      if (err && err.code === 'ENOENT') return resolve(recordCommand() ? 'default' : null); // no pactl: cannot ask, just try
+      resolve(err ? null : out.trim() || null);
+    });
   });
 }
 
-module.exports = { Recorder, RATE, BYTES_PER_SEC, toWav, speechLevel, listInputs, defaultInput };
+module.exports = { recordCommand, Recorder, RATE, BYTES_PER_SEC, toWav, speechLevel, listInputs, defaultInput };

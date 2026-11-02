@@ -14,11 +14,15 @@ const { listInputs, defaultInput } = require('./audio');
 const hyprland = require('./hyprland');
 const output = require('./output');
 const autostart = require('./autostart');
+const desktop = require('./desktop');
+const keys = require('./keys');
+const { Shortcut } = require('./shortcut');
 const binds = require('../shared/binds');
 
 // Wayland app_id, used by our Hyprland window rules.
 app.setName('murmur');
-app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+if (desktop.overlayNeedsX11()) app.commandLine.appendSwitch('ozone-platform', 'x11');
+else app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 app.commandLine.appendSwitch('enable-features', 'WaylandWindowDecorations');
 
 if (!app.requestSingleInstanceLock()) {
@@ -34,6 +38,11 @@ const history = new History();
 const models = new Models();
 const whisper = new Whisper();
 const controller = new Controller({ config, whisper, history });
+const localCmd = path.join(paths.home, '.local', 'bin', 'murmur');
+const shortcut = new Shortcut({ config, controller, murmurCmd: fs.existsSync(localCmd) ? localCmd : 'murmur' });
+shortcut.on('change', () => broadcast());
+let typing = { tool: null, problem: null };
+keys.status().then((t) => { typing = t; broadcast(); });
 
 let overlay = null;
 let mainWin = null;
@@ -96,6 +105,13 @@ function snapshot() {
       lua: hyprland.fileName('lua'),
       conf: hyprland.fileName('conf')
     },
+    desk: {
+      desktop: desktop.desktop,
+      name: desktop.label,
+      session: desktop.session,
+      shortcut: shortcut.snapshot(),
+      typing
+    },
     gpu: !!whisper.backend() && whisper.backend() !== 'cpu',
     autostart: { available: autostart.available(), on: autostartOn }
   };
@@ -149,8 +165,12 @@ config.on('change', (keys) => {
     if (!controller.busy) loadModel();
   }
   if (keys.some((k) => ['combo', 'mode'].includes(k))) {
-    const f = fmt();
-    if (hyprland.isAdded(f)) hyprland.addBinds(f, config.get('combo'), config.get('mode')).then(broadcast);
+    if (shortcut.method === 'hyprland') {
+      const f = fmt();
+      if (hyprland.isAdded(f)) hyprland.addBinds(f, config.get('combo'), config.get('mode')).then(broadcast);
+    } else if (keys.includes('combo')) {
+      shortcut.update();
+    }
   }
   broadcast();
 });
@@ -168,6 +188,7 @@ function createOverlay() {
     resizable: false,
     focusable: false,
     skipTaskbar: true,
+    ...(desktop.desktop !== 'hyprland' && process.platform === 'linux' ? { type: 'notification' } : {}),
     alwaysOnTop: true,
     hasShadow: false,
     show: false,
@@ -175,9 +196,16 @@ function createOverlay() {
   });
   overlay.on('page-title-updated', (e) => e.preventDefault());
   overlay.loadFile(path.join(RENDERER, 'overlay.html'));
-  if (process.env.HYPRLAND_INSTANCE_SIGNATURE == null) {
-    const d = screen.getPrimaryDisplay().workArea;
-    overlay.setPosition(Math.round(d.x + (d.width - hyprland.OVERLAY.w) / 2), d.y + d.height - hyprland.OVERLAY.h);
+  if (desktop.desktop !== 'hyprland') {
+    // No window rules outside Hyprland: place and pin it ourselves.
+    const place = () => {
+      const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+      overlay.setPosition(Math.round(d.x + (d.width - hyprland.OVERLAY.w) / 2), d.y + d.height - hyprland.OVERLAY.h);
+    };
+    place();
+    overlay.place = place;
+    overlay.setAlwaysOnTop(true, 'screen-saver');
+    overlay.setVisibleOnAllWorkspaces(true);
   }
 }
 
@@ -189,6 +217,7 @@ controller.on('view', (view) => {
     // Let the pill fade out before unmapping the window.
     hideOverlayTimer = setTimeout(() => overlay && !overlay.isDestroyed() && overlay.hide(), 260);
   } else if (!overlay.isVisible()) {
+    if (overlay.place) overlay.place();
     overlay.showInactive();
   }
 });
@@ -290,10 +319,15 @@ const handlers = {
   },
   'models:show': () => { fs.mkdirSync(paths.models, { recursive: true }); output.openPath(paths.models); },
   'inputs:refresh': () => refreshInputs().then(snapshot),
-  'shortcut:check': async (_e, keys) => {
+  'shortcut:check': async (_e, combo) => {
+    if (shortcut.method !== 'hyprland') return binds.check(combo, [], { desktop: desktop.label, hyprland: false });
     const own = hyprland.isAdded(fmt()) ? config.get('combo') : null;
-    return binds.check(keys, await hyprland.existingBinds(own));
+    return binds.check(combo, await hyprland.existingBinds(own));
   },
+  'shortcut:bind': async () => { await shortcut.bind(); return snapshot(); },
+  'shortcut:unbind': async () => { await shortcut.unbind(); return snapshot(); },
+  'shortcut:configure': () => shortcut.configure().catch(() => false),
+  'typing:recheck': async () => { typing = await keys.status(); return snapshot(); },
   'hypr:add': async (_e, f) => {
     f = f || fmt();
     await hyprland.addBinds(f, config.get('combo'), config.get('mode'));
@@ -332,8 +366,10 @@ function status() {
     whisper: whisper.state,
     error: whisper.error,
     backend: backendLabel(c.backend),
-    shortcut: binds.id(c.combo) + ' · ' + c.mode,
-    input: c.input === 'default' ? 'default (PipeWire)' : inputLabel()
+    desktop: desktop.label + ' (' + desktop.session + ')',
+    shortcut: binds.id(c.combo) + ' · ' + shortcut.mode() + ' · ' + shortcut.method + (shortcut.method === 'hyprland' || shortcut.state.bound ? '' : ' (not set up yet)'),
+    typing: typing.tool || 'none: ' + typing.problem,
+    input: c.input === 'default' ? 'default' : inputLabel()
   };
 }
 
@@ -385,6 +421,7 @@ app.on('window-all-closed', () => {
 
 app.whenReady().then(async () => {
   serveSocket();
+  shortcut.init().catch((e) => console.error('[shortcut]', e.message));
   const events = new hyprland.Events();
   events.on('configreloaded', broadcast);
   events.start();

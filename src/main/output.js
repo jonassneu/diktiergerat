@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const { execFile, spawn } = require('child_process');
 const paths = require('./paths');
+const desktop = require('./desktop');
+const keys = require('./keys');
 
 function run(cmd, args, input) {
   return new Promise((resolve, reject) => {
@@ -13,12 +15,23 @@ function run(cmd, args, input) {
   });
 }
 
-// Types text into the focused window through the virtual keyboard protocol.
-function type(text) {
-  return run('wtype', ['--', text]);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------- clipboard ----------
+// wl-clipboard on Wayland. Under GNOME (no data-control protocol) and on X11,
+// Electron's own clipboard, which the compositor shares with Wayland apps.
+
+function electronClipboard() {
+  try {
+    return require('electron').clipboard;
+  } catch {
+    return null;
+  }
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function useWl() {
+  return desktop.session === 'wayland' && desktop.desktop !== 'gnome' && !!process.env.WAYLAND_DISPLAY;
+}
 
 function read(args) {
   return new Promise((resolve) => {
@@ -26,66 +39,102 @@ function read(args) {
   });
 }
 
-// Current clipboard as { type, data }, or null when empty.
+function wlCopy(data, type) {
+  return new Promise((resolve, reject) => {
+    // wl-copy forks to serve the clipboard, so do not wait for it to exit.
+    const p = spawn('wl-copy', type ? ['--type', type] : [], { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
+    p.on('error', reject);
+    p.stdin.end(data, () => resolve());
+    p.unref();
+  });
+}
+
+async function copy(text) {
+  const cb = electronClipboard();
+  if (useWl()) {
+    try {
+      await wlCopy(text);
+      return;
+    } catch (e) {
+      if (!cb) throw e;
+    }
+  }
+  if (!cb) throw new Error('no clipboard available');
+  cb.writeText(text);
+}
+
+async function clipboardText() {
+  if (useWl()) {
+    const out = await read(['--no-newline', '--type', 'text/plain;charset=utf-8']);
+    return out ? out.toString() : null;
+  }
+  const cb = electronClipboard();
+  return cb ? cb.readText() : null;
+}
+
+// Current clipboard, so it can be put back after pasting. null when empty.
 async function saveClipboard() {
-  const list = await read(['--list-types']);
-  if (!list) return null;
-  const types = list.toString().split('\n').map((t) => t.trim()).filter(Boolean);
-  if (!types.length) return null;
-  const type = types.find((t) => /^text\/plain;charset=utf-8$/i.test(t)) || types[0];
-  const data = await read(['--no-newline', '--type', type]);
-  return data ? { type, data } : null;
+  if (useWl()) {
+    const list = await read(['--list-types']);
+    if (!list) return null;
+    const types = list.toString().split('\n').map((t) => t.trim()).filter(Boolean);
+    if (!types.length) return null;
+    const type = types.find((t) => /^text\/plain;charset=utf-8$/i.test(t)) || types[0];
+    const data = await read(['--no-newline', '--type', type]);
+    return data ? { wl: true, type, data } : null;
+  }
+  const cb = electronClipboard();
+  if (!cb) return null;
+  const formats = cb.availableFormats();
+  if (!formats.length) return null;
+  if (formats.some((f) => f.startsWith('image/'))) return { image: cb.readImage() };
+  if (formats.includes('text/html')) return { text: cb.readText(), html: cb.readHTML() };
+  return { text: cb.readText() };
 }
 
 function restoreClipboard(saved) {
-  if (!saved) return run('wl-copy', ['--clear']).catch(() => {});
-  return new Promise((resolve) => {
-    const p = spawn('wl-copy', ['--type', saved.type], { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
-    p.on('error', () => resolve());
-    p.stdin.end(saved.data, () => resolve());
-    p.unref();
-  });
+  if (useWl()) {
+    if (!saved) return run('wl-copy', ['--clear']).catch(() => {});
+    return wlCopy(saved.data, saved.type).catch(() => {});
+  }
+  const cb = electronClipboard();
+  if (!cb) return;
+  if (!saved) cb.clear();
+  else if (saved.image) cb.writeImage(saved.image);
+  else cb.write({ text: saved.text, html: saved.html });
 }
 
-// Terminals paste with Ctrl+Shift+V, everything else with Ctrl+V.
-const TERMINALS = /^(kitty|alacritty|foot|footclient|org\.wezfurlong\.wezterm|wezterm|com\.mitchellh\.ghostty|ghostty|org\.kde\.konsole|konsole|gnome-terminal-server|org\.gnome\.terminal|org\.gnome\.console|kgx|xterm|uxterm|tilix|com\.gexperts\.tilix|terminator|xfce4-terminal|st|st-256color|urxvt|rio|warp)$/i;
+// ---------- typing ----------
 
-// Drops the whole text in at once: put it on the clipboard, press paste,
-// then put back whatever was on the clipboard before.
-async function paste(text, windowClass) {
-  const saved = await saveClipboard();
+// Terminals paste with Ctrl+Shift+V, everything else with Ctrl+V.
+const TERMINALS = /^(kitty|alacritty|foot|footclient|org\.wezfurlong\.wezterm|wezterm|com\.mitchellh\.ghostty|ghostty|org\.kde\.konsole|konsole|gnome-terminal-server|org\.gnome\.terminal|org\.gnome\.console|org\.gnome\.ptyxis|ptyxis|kgx|xterm|uxterm|tilix|com\.gexperts\.tilix|terminator|xfce4-terminal|st|st-256color|urxvt|rio|warp|blackbox|com\.raggesilver\.blackbox|lxterminal|mate-terminal|qterminal|deepin-terminal|io\.elementary\.terminal|cosmic-term|com\.system76\.cosmicterm)$/i;
+
+// Drops the whole text in at once: put it on the clipboard, press paste.
+// With restore, whatever was on the clipboard before comes back afterwards.
+async function paste(text, windowClass, { restore = true } = {}) {
+  const saved = restore ? await saveClipboard() : null;
   await copy(text);
   // wl-copy takes a moment to own the selection; wait until it does.
   for (let i = 0; i < 25; i++) {
-    const now = await read(['--no-newline', '--type', 'text/plain;charset=utf-8']);
-    if (now && now.toString() === text) break;
+    if ((await clipboardText()) === text) break;
     await sleep(20);
   }
   const term = TERMINALS.test(windowClass || '');
-  await run('wtype', term ? ['-M', 'ctrl', '-M', 'shift', '-k', 'v', '-m', 'shift', '-m', 'ctrl'] : ['-M', 'ctrl', '-k', 'v', '-m', 'ctrl']);
+  await keys.press(term ? ['ctrl', 'shift', 'v'] : ['ctrl', 'v']);
   // Give the app time to fetch the text before the old clipboard returns.
-  setTimeout(() => restoreClipboard(saved), 400);
+  if (restore) setTimeout(() => restoreClipboard(saved), 400);
+}
+
+function type(text) {
+  return keys.type(text);
 }
 
 function pressEnter() {
-  return run('wtype', ['-k', 'Return']);
+  return keys.press(['Return']);
 }
 
 function backspace(count) {
-  if (count <= 0) return Promise.resolve();
-  const args = [];
-  for (let i = 0; i < count; i++) args.push('-k', 'BackSpace');
-  return run('wtype', args);
-}
-
-function copy(text) {
-  return new Promise((resolve, reject) => {
-    // wl-copy forks to serve the clipboard, so do not wait for it to exit.
-    const p = spawn('wl-copy', [], { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
-    p.on('error', reject);
-    p.stdin.end(text, () => resolve());
-    p.unref();
-  });
+  return keys.repeat('BackSpace', count);
 }
 
 // Short, soft ticks for start and stop, written once as WAV files.

@@ -57,7 +57,9 @@
   }
 
   // `existing` is a list of { modmask, key } from `hyprctl binds -j`.
-  function check(keys, existing) {
+  // opts.hyprland === false: not on Hyprland, so skip the CachyOS defaults.
+  function check(keys, existing, opts) {
+    const hypr = !opts || opts.hyprland !== false;
     const mods = keys.slice(0, -1);
     const key = keys[keys.length - 1];
     const kid = id(keys);
@@ -65,14 +67,14 @@
     const lone = /^F\d{1,2}$/.test(key) || ['Pause', 'ScrollLock', 'Insert', 'Menu'].indexOf(key) !== -1;
     const strong = mods.filter((m) => m !== 'Shift').length > 0;
     if (!strong && !lone) return { ok: false, msg: 'Add Super, Ctrl or Alt so normal typing keeps working.' };
-    if (CACHY[kid]) return { ok: false, msg: lbl + ' already ' + CACHY[kid] + ' in CachyOS.' };
+    if (hypr && CACHY[kid]) return { ok: false, msg: lbl + ' already ' + CACHY[kid] + ' in CachyOS.' };
     const m = sortMods(mods).join('+');
     const digit = /^\d$/.test(key);
     const arrow = ['Left', 'Right', 'Up', 'Down'].indexOf(key) !== -1;
-    if (digit && m === 'Super') return { ok: false, msg: lbl + ' already switches monitors in CachyOS.' };
-    if (digit && (m === 'Super+Ctrl' || m === 'Super+Alt')) return { ok: false, msg: lbl + ' already switches workspaces in CachyOS.' };
-    if (digit && (m === 'Super+Shift' || m === 'Super+Ctrl+Shift')) return { ok: false, msg: lbl + ' already moves windows in CachyOS.' };
-    if (arrow && (m === 'Super' || m === 'Super+Shift' || m === 'Super+Ctrl' || m === 'Super+Ctrl+Shift')) return { ok: false, msg: lbl + ' already moves focus or windows in CachyOS.' };
+    if (hypr && digit && m === 'Super') return { ok: false, msg: lbl + ' already switches monitors in CachyOS.' };
+    if (hypr && digit && (m === 'Super+Ctrl' || m === 'Super+Alt')) return { ok: false, msg: lbl + ' already switches workspaces in CachyOS.' };
+    if (hypr && digit && (m === 'Super+Shift' || m === 'Super+Ctrl+Shift')) return { ok: false, msg: lbl + ' already moves windows in CachyOS.' };
+    if (hypr && arrow && (m === 'Super' || m === 'Super+Shift' || m === 'Super+Ctrl' || m === 'Super+Ctrl+Shift')) return { ok: false, msg: lbl + ' already moves focus or windows in CachyOS.' };
     if (APPS[kid]) return { ok: false, msg: lbl + ' is ' + APPS[kid] + ' in most apps.' };
     if (existing && existing.length) {
       const mask = modmask(mods);
@@ -80,6 +82,7 @@
       const hit = existing.find((b) => b.modmask === mask && String(b.key).toLowerCase() === hk);
       if (hit) return { ok: false, msg: lbl + ' is already bound in your Hyprland config.' };
     }
+    if (!hypr) return { ok: true, msg: 'Not a common app shortcut. ' + (opts.desktop || 'Your desktop') + ' tells you if something else already uses it.' };
     return { ok: true, msg: 'Free. Nothing in your Hyprland binds or the CachyOS defaults uses it.' };
   }
 

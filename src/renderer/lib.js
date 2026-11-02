@@ -74,3 +74,19 @@ export const Backdrop = ({ t, variant = 'side' }) => {
       <div class="t3-grain" style=${{ position: 'absolute', inset: 0 }}></div>
     </div>`;
 };
+
+// How the shortcut works outside Hyprland, in one or two sentences.
+export function desktopShortcutText(s) {
+  const sc = s.desk.shortcut;
+  const name = s.desk.name;
+  if (sc.method === 'portal') return sc.bound
+    ? 'Set up in ' + name + '. Press and hold it in any app.'
+    : name + ' asks you once to confirm the shortcut. Murmur then hears when you press and let go of it.';
+  if (sc.method === 'gnome') return sc.bound
+    ? 'Added to GNOME’s keyboard shortcuts as “Murmur dictation”. Tap it to start, tap again to stop.'
+    : 'Murmur adds “Murmur dictation” to GNOME’s keyboard shortcuts. Tap it to start, tap again to stop.';
+  if (sc.method === 'x11') return sc.bound
+    ? 'Murmur listens for the shortcut itself. Tap it to start, tap again to stop.'
+    : (sc.error || 'The shortcut could not be registered.') + ' Pick another one above.';
+  return name + ' gives apps no way to add a shortcut, so add one yourself in its keyboard settings that runs the command below. Tap it to start, tap again to stop.';
+}

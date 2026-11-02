@@ -16,6 +16,7 @@ const DEFAULTS = {
   enter: false,
   sound: true,
   fmt: null,
+  portalBound: false,
   accent: '#346BF1'
 };
 

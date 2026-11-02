@@ -1,10 +1,10 @@
-import { html, render, useState, useEffect, useRef, api, tones, useAppState, Logo, MicIcon, CheckIcon, WarnIcon, Backdrop } from './lib.js';
+import { html, render, useState, useEffect, useRef, api, tones, useAppState, Logo, MicIcon, CheckIcon, WarnIcon, Backdrop, desktopShortcutText } from './lib.js';
 
 
 const CHOICES = [
   { id: 'base', title: 'Quick', desc: 'Fastest. Good for short notes on any machine.' },
   { id: 'small', title: 'Balanced', desc: 'Accurate enough for most writing, and fine on a CPU.' },
-  { id: 'turbo', title: 'Best', desc: 'Most accurate. Runs on your graphics card through Vulkan.' }
+  { id: 'turbo', title: 'Best', desc: 'Most accurate. Runs on your graphics card.' }
 ];
 
 const H1 = { margin: 0, fontSize: '30px', lineHeight: 1.12, fontWeight: 650, letterSpacing: '-0.024em' };
@@ -69,10 +69,21 @@ function Setup() {
     api.invoke('model:choose', model).then((err) => err && setError(err));
     next();
   };
-  const addToHyprland = async () => {
-    if (!s.hypr.added) await api.invoke('hypr:add');
+  const sc = s.desk.shortcut;
+  const hypr = sc.method === 'hyprland';
+  const needsBind = (sc.method === 'portal' || sc.method === 'gnome') && !sc.bound;
+  const addShortcut = async () => {
+    if (hypr) {
+      if (!s.hypr.added) await api.invoke('hypr:add');
+    } else if (needsBind) {
+      const r = await api.invoke('shortcut:bind');
+      const now = r && r.desk && r.desk.shortcut;
+      if (now && !now.bound) return; // cancelled or refused: stay here
+    }
     next();
   };
+  const primaryLabel = hypr ? (s.hypr.added ? 'Continue' : 'Add to Hyprland') : needsBind ? (sc.method === 'gnome' ? 'Add to GNOME' : 'Set up shortcut') : 'Continue';
+  const verb = sc.mode === 'tap' ? 'Tap' : 'Hold';
   const tryDown = (e) => {
     if (e.button !== 0) return;
     setTrying(true);
@@ -150,7 +161,7 @@ function Setup() {
           <div key="s2" class="mm-in-x" style=${{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
             <div style=${{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <h1 style=${H1}>Your shortcut</h1>
-              <p style=${LEAD}>Hold it in any app and talk. Let go, and your words are typed where the cursor is.</p>
+              <p style=${LEAD}>${sc.mode === 'tap' ? 'Tap it in any app and talk. Tap again, and your words are typed where the cursor is.' : 'Hold it in any app and talk. Let go, and your words are typed where the cursor is.'}</p>
             </div>
             <div style=${{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px', padding: '36px 24px 28px', borderRadius: '20px', background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}>
               <div style=${{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -159,12 +170,15 @@ function Setup() {
               ${check && html`
                 <p style=${{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#D4D4D4', textAlign: 'center' }}>
                   ${check.ok ? html`<${CheckIcon} size=${16} stroke="#00D492" width=${2.4} />` : html`<${WarnIcon} />`}
-                  ${check.ok ? 'Free in your Hyprland setup. It stays clear of Super + Space, your launcher.' : check.msg}
+                  ${check.ok && hypr ? 'Free in your Hyprland setup. It stays clear of Super + Space, your launcher.' : check.msg}
                 </p>`}
             </div>
-            <p style=${{ margin: 0, fontSize: '13px', lineHeight: 1.5, color: '#8F8F8F' }}>${s.hypr.added
+            <p style=${{ margin: 0, fontSize: '13px', lineHeight: 1.5, color: '#8F8F8F' }}>${!hypr ? desktopShortcutText(s) : s.hypr.added
               ? 'Already in ' + fileName + '. You can change or remove it in Settings.'
               : 'Murmur adds a short block to ' + fileName + ': the shortcut (start on press, stop on release) and rules that keep its overlay floating and out of focus. You can remove it in Settings.'}</p>
+            ${!hypr && sc.method === 'manual' && html`<p class="mono" style=${{ margin: 0, padding: '10px 14px', borderRadius: '12px', background: 'rgba(0,0,0,0.5)', fontSize: '13px', color: '#D4D4D4', userSelect: 'text' }}>${sc.command} toggle</p>`}
+            ${!hypr && sc.error && html`<p style=${{ margin: 0, fontSize: '13px', color: '#FFB900' }}>${sc.error}</p>`}
+            ${!s.desk.typing.tool && html`<p style=${{ margin: 0, display: 'flex', gap: '8px', fontSize: '13px', lineHeight: 1.5, color: '#FFB900' }}><${WarnIcon} style=${{ flex: 'none', marginTop: '2px' }} />Murmur can’t type into other apps yet (${s.desk.typing.problem}). Run the installer again to fix it. Until then your words go to the clipboard.</p>`}
             <div style=${{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
               <div style=${{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#A1A1A1' }}>
                 <${Progress} pct=${dlPct} t=${t} />
@@ -172,7 +186,7 @@ function Setup() {
               </div>
               <div class="no-drag" style=${{ display: 'flex', gap: '10px' }}>
                 <${Soft} onClick=${back}>Back<//>
-                <${Primary} t=${t} onClick=${addToHyprland}>${s.hypr.added ? 'Continue' : 'Add to Hyprland'}<//>
+                <${Primary} t=${t} onClick=${addShortcut}>${primaryLabel}<//>
               </div>
             </div>
           </div>`}
@@ -181,7 +195,7 @@ function Setup() {
           <div key="s3" class="mm-in-x" style=${{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div style=${{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <h1 style=${H1}>Try it</h1>
-              <p style=${{ ...LEAD, maxWidth: '540px' }}>Click into the box, hold ${comboText} and say something. No keyboard handy? Hold the button instead.</p>
+              <p style=${{ ...LEAD, maxWidth: '540px' }}>Click into the box, ${verb.toLowerCase()} ${sc.method === 'portal' && sc.detail && sc.detail !== 'set' ? sc.detail : comboText} and say something. No keyboard handy? Hold the button instead.</p>
             </div>
             <div class="no-drag" style=${{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label for="mm-try" style=${{ fontSize: '13px', fontWeight: 600, color: '#D4D4D4' }}>Practice</label>
@@ -200,7 +214,7 @@ function Setup() {
                     ? html`<span class="mm-bar mm-anim" style=${{ display: 'block', width: '3px', height: h + 'px', borderRadius: '2px', background: t.text, animationDelay: (-((i * 37) % 9) / 10).toFixed(1) + 's' }}></span>`
                     : html`<span style=${{ display: 'block', width: '3px', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.22)' }}></span>`)}
                 </span>
-                <span style=${{ fontSize: '13px', color: '#A1A1A1' }}>${s.inputLabel === 'Default' ? 'Default input · PipeWire' : s.inputLabel}</span>
+                <span style=${{ fontSize: '13px', color: '#A1A1A1' }}>${s.inputLabel === 'Default' ? 'Default input' : s.inputLabel}</span>
               </div>
             </div>
             <div style=${{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
@@ -218,7 +232,7 @@ function Setup() {
               <${CheckIcon} size=${30} />
             </span>
             <h1 style=${H1}>You’re all set</h1>
-            <p style=${{ ...LEAD, maxWidth: '440px' }}>Murmur keeps running in the background. ${s.config.mode === 'tap' ? 'Tap' : 'Hold'} ${comboText} in any app whenever you want to talk instead of type.</p>
+            <p style=${{ ...LEAD, maxWidth: '440px' }}>Murmur keeps running in the background. ${verb} ${comboText} in any app whenever you want to talk instead of type.</p>
             ${s.autostart.available && html`
               <label class="no-drag" style=${{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', fontSize: '14px', color: '#D4D4D4', cursor: 'pointer' }}>
                 <input type="checkbox" checked=${s.autostart.on} onChange=${(e) => api.invoke('autostart:set', e.target.checked)} style=${{ width: '18px', height: '18px', accentColor: t.accent, cursor: 'pointer' }} />

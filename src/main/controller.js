@@ -3,6 +3,8 @@ const { EventEmitter } = require('events');
 const { Recorder, speechLevel, defaultInput, BYTES_PER_SEC } = require('./audio');
 const output = require('./output');
 const hyprland = require('./hyprland');
+const desktop = require('./desktop');
+const keys = require('./keys');
 const models = require('./models');
 
 const MIN_SECONDS = 0.35; // shorter presses are treated as accidental
@@ -62,7 +64,7 @@ class Controller extends EventEmitter {
       this.show({ kind: 'nomic' });
       return;
     }
-    const target = sink === 'practice' ? null : await hyprland.activeWindow();
+    const target = sink === 'practice' ? null : await desktop.activeWindow();
     this.session = {
       mode,
       sink: sink || 'focused',
@@ -172,30 +174,45 @@ class Controller extends EventEmitter {
       this.emit('history');
       return;
     }
-    const now = await hyprland.activeWindow();
+    // undefined: this desktop does not tell us which window has focus.
+    const now = await desktop.activeWindow();
     const own = now && now.class === 'murmur' && /overlay/i.test(now.title);
     const window = own ? s.target : now;
+    const known = window !== undefined;
     const enter = this.config.get('enter');
-
-    if (this.config.get('after') === 'copy' || !window || !window.acceptsInput) {
+    const copyOnly = async (reason) => {
       await output.copy(text);
       this.last = null;
       this.history.add({ text, target: 'Copied to clipboard', dur });
       this.emit('history');
-      this.show({ kind: 'copied' });
-      return;
+      this.show({ kind: 'copied', reason });
+    };
+
+    if (this.config.get('after') === 'copy') return copyOnly(null);
+    if (known && (!window || !window.acceptsInput)) return copyOnly('No text field to type into');
+    const typer = await keys.pick();
+    if (!typer.tool) {
+      console.error('[type]', typer.problem);
+      return copyOnly('Can’t type here: ' + typer.problem);
     }
 
     const typed = text + (enter ? '' : ' ');
     try {
-      await output.paste(typed, window.class || window.initialClass);
+      // Where we cannot see the focused window, leave the text on the
+      // clipboard too, in case it did not land anywhere.
+      await output.paste(typed, window && window.class, { restore: known });
     } catch (e) {
-      console.error('[paste]', e);
-      await output.type(typed);
+      console.error('[paste]', e.message);
+      try {
+        await output.type(typed);
+      } catch (e2) {
+        console.error('[type]', e2.message);
+        return copyOnly('Typing failed: ' + e2.message);
+      }
     }
-    if (enter) await output.pressEnter();
-    const name = hyprland.windowName(window);
-    this.last = enter ? null : { chars: Array.from(typed).length, address: window.address };
+    if (enter) await output.pressEnter().catch(() => {});
+    const name = window ? hyprland.windowName(window) : 'the focused app';
+    this.last = enter ? null : { chars: Array.from(typed).length, id: window ? window.id : null };
     this.history.add({ text, target: name, dur });
     this.emit('history');
     this.show({ kind: 'typed', words: words(text).length, target: name, canUndo: !enter });
@@ -205,8 +222,8 @@ class Controller extends EventEmitter {
     const last = this.last;
     this.last = null;
     if (!last) return;
-    const now = await hyprland.activeWindow();
-    if (now && now.address === last.address) await output.backspace(last.chars);
+    const now = await desktop.activeWindow();
+    if (!last.id || (now && now.id === last.id)) await output.backspace(last.chars).catch(() => {});
     this.show({ kind: 'hidden' });
   }
 }
