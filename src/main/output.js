@@ -18,6 +18,55 @@ function type(text) {
   return run('wtype', ['--', text]);
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function read(args) {
+  return new Promise((resolve) => {
+    execFile('wl-paste', args, { encoding: 'buffer', timeout: 2000, maxBuffer: 64 * 1024 * 1024 }, (err, out) => resolve(err ? null : out));
+  });
+}
+
+// Current clipboard as { type, data }, or null when empty.
+async function saveClipboard() {
+  const list = await read(['--list-types']);
+  if (!list) return null;
+  const types = list.toString().split('\n').map((t) => t.trim()).filter(Boolean);
+  if (!types.length) return null;
+  const type = types.find((t) => /^text\/plain;charset=utf-8$/i.test(t)) || types[0];
+  const data = await read(['--no-newline', '--type', type]);
+  return data ? { type, data } : null;
+}
+
+function restoreClipboard(saved) {
+  if (!saved) return run('wl-copy', ['--clear']).catch(() => {});
+  return new Promise((resolve) => {
+    const p = spawn('wl-copy', ['--type', saved.type], { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
+    p.on('error', () => resolve());
+    p.stdin.end(saved.data, () => resolve());
+    p.unref();
+  });
+}
+
+// Terminals paste with Ctrl+Shift+V, everything else with Ctrl+V.
+const TERMINALS = /^(kitty|alacritty|foot|footclient|org\.wezfurlong\.wezterm|wezterm|com\.mitchellh\.ghostty|ghostty|org\.kde\.konsole|konsole|gnome-terminal-server|org\.gnome\.terminal|org\.gnome\.console|kgx|xterm|uxterm|tilix|com\.gexperts\.tilix|terminator|xfce4-terminal|st|st-256color|urxvt|rio|warp)$/i;
+
+// Drops the whole text in at once: put it on the clipboard, press paste,
+// then put back whatever was on the clipboard before.
+async function paste(text, windowClass) {
+  const saved = await saveClipboard();
+  await copy(text);
+  // wl-copy takes a moment to own the selection; wait until it does.
+  for (let i = 0; i < 25; i++) {
+    const now = await read(['--no-newline', '--type', 'text/plain;charset=utf-8']);
+    if (now && now.toString() === text) break;
+    await sleep(20);
+  }
+  const term = TERMINALS.test(windowClass || '');
+  await run('wtype', term ? ['-M', 'ctrl', '-M', 'shift', '-k', 'v', '-m', 'shift', '-m', 'ctrl'] : ['-M', 'ctrl', '-k', 'v', '-m', 'ctrl']);
+  // Give the app time to fetch the text before the old clipboard returns.
+  setTimeout(() => restoreClipboard(saved), 400);
+}
+
 function pressEnter() {
   return run('wtype', ['-k', 'Return']);
 }
@@ -82,4 +131,4 @@ function openPath(p) {
   c.unref();
 }
 
-module.exports = { type, pressEnter, backspace, copy, play, openPath };
+module.exports = { type, paste, pressEnter, backspace, copy, play, openPath };

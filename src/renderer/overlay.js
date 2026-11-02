@@ -4,7 +4,6 @@ const PILL = { display: 'flex', alignItems: 'center', height: '64px', boxSizing:
 const ICON = { width: '44px', height: '44px', flex: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const TITLE = { fontSize: '14px', fontWeight: 600, letterSpacing: '-0.006em', color: '#F5F5F5' };
 const SUB = { fontSize: '12.5px', color: '#B5B5B5' };
-const BUBBLE = { maxWidth: '600px', boxSizing: 'border-box', padding: '14px 22px', borderRadius: '24px', fontSize: '16px', lineHeight: 1.5, fontWeight: 500, letterSpacing: '-0.011em', color: '#F5F5F5', textWrap: 'pretty' };
 
 const Spinner = ({ t }) => html`
   <span style=${{ ...ICON, background: 'rgba(255,255,255,0.08)' }}>
@@ -37,15 +36,9 @@ const ThinkBars = ({ t }) => html`
   </span>`;
 
 function Listening({ v, t }) {
-  const hasWords = !!(v.settled || v.live);
   const time = Math.floor(v.secs / 60) + ':' + String(v.secs % 60).padStart(2, '0');
   return html`
     <div style=${{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-      <div class="lg lg-dim pill" style=${BUBBLE}>
-        ${hasWords
-          ? html`<span>${v.settled}</span> <span style=${{ color: 'rgba(245,245,245,0.5)' }}>${v.live}</span>`
-          : html`<span style=${{ color: 'rgba(245,245,245,0.6)' }}>Listening…</span>`}
-      </div>
       <div class="lg pill" style=${{ ...PILL, gap: '6px', padding: '0 10px' }}>
         <span style=${{ ...ICON, position: 'relative', background: t.accent, boxShadow: `inset 0 1px rgba(255,255,255,0.22), 0 4px 14px ${t.a(0.4)}` }}>
           <span class="mm-ring mm-anim" aria-hidden="true" style=${{ position: 'absolute', inset: 0, borderRadius: '50%', border: '1.5px solid ' + t.text }}></span>
@@ -80,7 +73,6 @@ function Warming({ v, t }) {
 function Transcribing({ v, t }) {
   return html`
     <div style=${{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-      ${v.text && html`<div class="lg lg-dim pill" style=${BUBBLE}>${v.text}</div>`}
       <div class="lg pill" style=${{ ...PILL, gap: '16px', padding: '0 24px 0 10px' }}>
         <${Spinner} t=${t} />
         <${ThinkBars} t=${t} />
